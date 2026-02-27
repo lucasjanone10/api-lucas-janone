@@ -10,14 +10,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Cria a pasta para guardar os PDFs
 const pdfsDir = path.join(__dirname, 'public', 'pdfs');
 if (!fs.existsSync(pdfsDir)) {
     fs.mkdirSync(pdfsDir, { recursive: true });
 }
 app.use('/pdfs', express.static(pdfsDir));
 
-// Conecta com o Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 app.post('/api/gerar-roteiro', async (req, res) => {
@@ -40,7 +38,8 @@ app.post('/api/gerar-roteiro', async (req, res) => {
         5. 'A Dica de Ouro do Lucas' para evitar perrengues.
         Termine com uma chamada sutil para a Mentoria de Viagens.`;
 
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+        // CORREÇÃO 1: Usando o modelo flash (mais rápido e não dá erro 404)
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         const result = await model.generateContent(prompt);
         let roteiroHTML = result.response.text();
 
@@ -73,7 +72,11 @@ app.post('/api/gerar-roteiro', async (req, res) => {
         </body>
         </html>`;
 
-        const browser = await puppeteer.launch({ headless: 'new' });
+        // CORREÇÃO 2: Adicionando argumentos de segurança para a Render aceitar o gerador de PDF
+        const browser = await puppeteer.launch({ 
+            headless: 'new',
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
         const page = await browser.newPage();
         await page.setContent(htmlTemplate, { waitUntil: 'networkidle0' });
         
@@ -83,7 +86,8 @@ app.post('/api/gerar-roteiro', async (req, res) => {
         await page.pdf({ path: filePath, format: 'A4', printBackground: true });
         await browser.close();
 
-        const pdfUrl = `http://localhost:${process.env.PORT || 3000}/pdfs/${fileName}`;
+        // CORREÇÃO 3: Gerando o link real da internet em vez do localhost
+        const pdfUrl = `https://${req.get('host')}/pdfs/${fileName}`;
         console.log(`[LOG] PDF gerado com sucesso: ${pdfUrl}`);
         
         res.json({ pdfUrl });
@@ -97,5 +101,4 @@ app.post('/api/gerar-roteiro', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`✅ Robô do Lucas Janone rodando na porta ${PORT}`);
-    console.log(`🔗 URL do Webhook: http://localhost:${PORT}/api/gerar-roteiro`);
 });
